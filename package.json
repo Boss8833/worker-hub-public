@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "gen-key": "node scripts/gen-key.js",
     "dev:server": "node --env-file-if-exists=.env --watch server/index.ts",
@@ -14,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "lucide-react": "^0.460.0",
