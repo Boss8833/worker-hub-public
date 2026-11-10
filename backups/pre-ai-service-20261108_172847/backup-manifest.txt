@@ -1,0 +1,2 @@
+New file planned: server/ai/generate.ts
+No existing source file modified.

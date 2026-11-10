@@ -1,0 +1,5 @@
+Task Queue - Pre-change Backup Manifest
+Date: 2026-11-08T17:11:35+02:00
+
+NEW FILE (did not exist): server/tasks/queue.ts
+NEW FILE (did not exist): server/tasks/queue.test.ts

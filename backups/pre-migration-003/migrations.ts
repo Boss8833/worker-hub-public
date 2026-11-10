@@ -1,0 +1,283 @@
+import { db, tx, get, run } from './db.ts';
+import { UNKNOWN_CAPS } from './caps.ts';
+
+const MIGRATIONS: { id: string; sql: string }[] = [
+  {
+    id: '001_init',
+    sql: `
+CREATE TABLE platforms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  base_url TEXT,
+  auth_type TEXT NOT NULL DEFAULT 'bearer' CHECK (auth_type IN ('bearer','api_key','custom')),
+  connector TEXT NOT NULL DEFAULT 'template',
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+  status TEXT NOT NULL DEFAULT 'not_configured' CHECK (status IN ('not_configured','configured','connected','error')),
+  capabilities TEXT NOT NULL DEFAULT '{}',
+  last_sync_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE encrypted_credentials (
+  platform_id INTEGER PRIMARY KEY REFERENCES platforms(id) ON DELETE CASCADE,
+  ciphertext TEXT NOT NULL, iv TEXT NOT NULL, tag TEXT NOT NULL,
+  header_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE platform_settings (
+  platform_id INTEGER PRIMARY KEY REFERENCES platforms(id) ON DELETE CASCADE,
+  submission_policy TEXT NOT NULL DEFAULT 'both' CHECK (submission_policy IN ('auto','manual','both')),
+  min_reward REAL NOT NULL DEFAULT 0,
+  settings_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE connection_tests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform_id INTEGER NOT NULL REFERENCES platforms(id) ON DELETE CASCADE,
+  ok INTEGER NOT NULL, message TEXT NOT NULL,
+  tested_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform_id INTEGER NOT NULL REFERENCES platforms(id) ON DELETE CASCADE,
+  external_id TEXT NOT NULL,
+  title TEXT NOT NULL, description TEXT, requirements TEXT,
+  reward REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USD',
+  deadline TEXT,
+  status TEXT NOT NULL DEFAULT 'discovered' CHECK (status IN ('discovered','eligible','ineligible','queued','executing','validating','awaiting_approval','submitted','completed','failed','rejected')),
+  ai_suitability TEXT,
+  is_mock INTEGER NOT NULL DEFAULT 0 CHECK (is_mock IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (platform_id, external_id)
+);
+CREATE INDEX idx_tasks_platform_status ON tasks(platform_id, status);
+CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE TABLE task_executions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  state TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 1,
+  output TEXT, error TEXT,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')), finished_at TEXT
+);
+CREATE INDEX idx_exec_task ON task_executions(task_id);
+CREATE TABLE task_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  payload TEXT, response TEXT, status TEXT NOT NULL DEFAULT 'pending',
+  submitted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_sub_task ON task_submissions(task_id);
+CREATE TABLE task_validations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  passed INTEGER NOT NULL, details TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE earnings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform_id INTEGER NOT NULL REFERENCES platforms(id) ON DELETE CASCADE,
+  task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  amount REAL NOT NULL, currency TEXT NOT NULL DEFAULT 'USD',
+  status TEXT NOT NULL CHECK (status IN ('pending','confirmed','withdrawn')),
+  is_mock INTEGER NOT NULL DEFAULT 0 CHECK (is_mock IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_earnings_status ON earnings(status);
+CREATE TABLE transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform_id INTEGER REFERENCES platforms(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('reward','withdrawal','fee','adjustment')),
+  amount REAL NOT NULL, currency TEXT NOT NULL DEFAULT 'USD',
+  reference TEXT,
+  is_mock INTEGER NOT NULL DEFAULT 0 CHECK (is_mock IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE withdrawal_methods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL CHECK (kind IN ('usdt','usdc','paypal','visa')),
+  label TEXT NOT NULL, network TEXT, token TEXT, address TEXT, email TEXT,
+  verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0,1)),
+  masked_card TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE withdrawal_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  method_id INTEGER NOT NULL REFERENCES withdrawal_methods(id) ON DELETE RESTRICT,
+  platform_id INTEGER REFERENCES platforms(id) ON DELETE SET NULL,
+  amount REAL NOT NULL, fee REAL NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USD',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','pending','processing','completed','failed','manual')),
+  tx_reference TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE ai_providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('ollama','openai_compatible')),
+  endpoint TEXT NOT NULL, model TEXT,
+  timeout_ms INTEGER NOT NULL DEFAULT 60000, retries INTEGER NOT NULL DEFAULT 2,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE ai_models (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_id INTEGER NOT NULL REFERENCES ai_providers(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, available INTEGER NOT NULL DEFAULT 1,
+  checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (provider_id, name)
+);
+CREATE TABLE worker_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  automation_enabled INTEGER NOT NULL DEFAULT 0,
+  min_reward REAL NOT NULL DEFAULT 0,
+  max_concurrent INTEGER NOT NULL DEFAULT 1,
+  max_runtime_sec INTEGER NOT NULL DEFAULT 300,
+  manual_approval INTEGER NOT NULL DEFAULT 1,
+  auto_submit INTEGER NOT NULL DEFAULT 0,
+  platform_ids TEXT NOT NULL DEFAULT '[]',
+  filters_json TEXT NOT NULL DEFAULT '{"include":[],"exclude":[]}'
+);
+CREATE TABLE worker_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  level TEXT NOT NULL CHECK (level IN ('debug','info','warn','error')),
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE application_settings (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL, entity TEXT, entity_id TEXT, detail TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`,
+  },
+
+  {
+    id: '002_ai_provider_credentials',
+    sql: `
+CREATE TABLE ai_provider_credentials (
+  provider_id INTEGER PRIMARY KEY REFERENCES ai_providers(id) ON DELETE CASCADE,
+  ciphertext TEXT NOT NULL,
+  iv TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`,
+  },
+
+  {
+    id: '003_task_analysis_artifacts_policies',
+    sql: `
+CREATE TABLE task_analyses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  output_kind TEXT NOT NULL CHECK (output_kind IN ('text','code','structured_data','media','file','social_action','onchain_action','other')),
+  size TEXT NOT NULL CHECK (size IN ('micro','small','large')),
+  decision TEXT NOT NULL CHECK (decision IN ('suitable','unsuitable','uncertain')),
+  confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  acceptance_criteria TEXT NOT NULL DEFAULT '[]',
+  reasons TEXT NOT NULL DEFAULT '[]',
+  analyzer TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_analyses_task ON task_analyses(task_id, id);
+CREATE TABLE task_artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  execution_id INTEGER REFERENCES task_executions(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  path TEXT NOT NULL,
+  bytes INTEGER NOT NULL CHECK (bytes >= 0),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_artifacts_task ON task_artifacts(task_id);
+CREATE TABLE platform_policies (
+  platform_id INTEGER PRIMARY KEY REFERENCES platforms(id) ON DELETE CASCADE,
+  default_autonomy TEXT NOT NULL DEFAULT 'approve' CHECK (default_autonomy IN ('auto','approve','manual')),
+  by_kind_json TEXT NOT NULL DEFAULT '{"social_action":"manual","onchain_action":"manual"}'
+);
+INSERT INTO platform_policies(platform_id) SELECT id FROM platforms;
+CREATE TRIGGER trg_platform_policy_default AFTER INSERT ON platforms
+BEGIN
+  INSERT OR IGNORE INTO platform_policies(platform_id) VALUES (NEW.id);
+END;
+`,
+  },
+
+
+  {
+    id: '003_task_discovery_metadata',
+    sql: `
+ALTER TABLE platforms ADD COLUMN archived_at TEXT;
+
+ALTER TABLE tasks ADD COLUMN eligibility_status TEXT NOT NULL DEFAULT 'unknown'
+  CHECK (eligibility_status IN ('eligible','ineligible','unknown'));
+
+ALTER TABLE tasks ADD COLUMN eligibility_reasons TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE tasks ADD COLUMN category TEXT;
+ALTER TABLE tasks ADD COLUMN source_url TEXT;
+ALTER TABLE tasks ADD COLUMN discovered_at TEXT;
+ALTER TABLE tasks ADD COLUMN reward_asset TEXT;
+ALTER TABLE tasks ADD COLUMN reward_network TEXT;
+ALTER TABLE tasks ADD COLUMN reward_amount_raw TEXT;
+ALTER TABLE tasks ADD COLUMN reward_decimals INTEGER;
+ALTER TABLE tasks ADD COLUMN reward_token_address TEXT;
+
+UPDATE tasks
+SET eligibility_status = CASE
+  WHEN status = 'eligible' THEN 'eligible'
+  WHEN status = 'ineligible' THEN 'ineligible'
+  ELSE 'unknown'
+END;
+
+UPDATE tasks
+SET discovered_at = created_at,
+    reward_asset = currency
+WHERE discovered_at IS NULL;
+
+CREATE INDEX idx_tasks_eligibility
+ON tasks(eligibility_status);
+
+CREATE INDEX idx_platforms_archived
+ON platforms(archived_at);
+`,
+  },
+
+];
+
+export function migrate() {
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+  for (const m of MIGRATIONS) {
+    if (get('SELECT id FROM schema_migrations WHERE id = ?', m.id)) continue;
+    tx(() => {
+      db.exec(m.sql);
+      run('INSERT INTO schema_migrations(id) VALUES (?)', m.id);
+    });
+  }
+}
+
+const SEED_PLATFORMS: [string, string][] = [
+  ['pr-social', 'PR.SOCIAL'], ['taskmarket', 'Taskmarket'], ['execution-market', 'Execution Market'],
+  ['taskforce', 'TaskForce'], ['clawlancer', 'Clawlancer'],
+];
+
+// Seeds platform NAMES only (no endpoints, no auth details): connectors must be built from official docs.
+export function seed() {
+  run('INSERT OR IGNORE INTO worker_settings(id) VALUES (1)');
+  if (get('SELECT key FROM application_settings WHERE key = ?', 'seeded_platforms')) return;
+  tx(() => {
+    for (const [slug, name] of SEED_PLATFORMS) {
+      run('INSERT OR IGNORE INTO platforms(slug, name, auth_type, connector, capabilities) VALUES (?, ?, ?, ?, ?)',
+        slug, name, 'bearer', 'template', JSON.stringify(UNKNOWN_CAPS));
+      run('INSERT OR IGNORE INTO platform_settings(platform_id) SELECT id FROM platforms WHERE slug = ?', slug);
+    }
+    run("INSERT INTO application_settings(key, value) VALUES ('seeded_platforms', '1')");
+  });
+}

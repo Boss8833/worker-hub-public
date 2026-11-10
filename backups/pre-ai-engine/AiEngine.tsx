@@ -1,0 +1,81 @@
+import { useState } from 'react';
+import { Plus, FlaskConical, Trash2 } from 'lucide-react';
+import { useI18n } from '../i18n';
+import { useApi } from '../hooks/useApi';
+import { api } from '../lib/api';
+import type { Provider } from '../lib/types';
+import { GlassCard, PageHeader, Badge, EmptyState, ErrorState, Skeleton } from '../components/ui/Glass';
+import { Button, Dialog, Field, Input, Select } from '../components/ui/Controls';
+import { useToast } from '../components/ui/Toast';
+
+const EMPTY = { name: '', kind: 'ollama' as Provider['kind'], endpoint: 'http://127.0.0.1:11434', timeoutMs: '60000', retries: '2' };
+
+export default function AiEngine() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, error, loading, reload } = useApi<Provider[]>('/api/ai/providers');
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState(EMPTY);
+  const [busy, setBusy] = useState<number | 'add' | null>(null);
+  const [result, setResult] = useState<Record<number, string>>({});
+
+  const add = async () => {
+    setBusy('add');
+    try { await api('/api/ai/providers', { method: 'POST', body: { name: f.name, kind: f.kind, endpoint: f.endpoint, timeoutMs: Number(f.timeoutMs), retries: Number(f.retries) } }); setOpen(false); setF(EMPTY); reload(); }
+    catch (e) { toast((e as Error).message, 'bad'); }
+    setBusy(null);
+  };
+  const test = async (p: Provider) => {
+    setBusy(p.id);
+    try {
+      const r = await api<{ ok: boolean; message: string }>('/api/ai/test', { method: 'POST', body: { providerId: p.id, kind: p.kind, endpoint: p.endpoint, timeoutMs: Math.min(p.timeoutMs, 60000) } });
+      setResult((x) => ({ ...x, [p.id]: r.message })); reload();
+    } catch (e) { toast((e as Error).message, 'bad'); }
+    setBusy(null);
+  };
+  const patch = async (p: Provider, body: object) => { try { await api(`/api/ai/providers/${p.id}`, { method: 'PATCH', body }); reload(); } catch (e) { toast((e as Error).message, 'bad'); } };
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title={t('ai.title')} subtitle={t('ai.usage')} actions={<Button variant="primary" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />{t('ai.add')}</Button>} />
+      {error && <ErrorState message={error} onRetry={reload} />}
+      {loading && !data && <Skeleton className="h-32" />}
+      {data && !data.length && <GlassCard><EmptyState title={t('ai.empty')} text={t('ai.emptyText')} /></GlassCard>}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {data?.map((p) => (
+          <GlassCard key={p.id} className="space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2"><div className="font-bold">{p.name}</div><div className="flex gap-1.5"><Badge tone="info">{p.kind}</Badge>{!p.isLocal && <Badge tone="warn">{t('ai.notLocal')}</Badge>}</div></div>
+            <div dir="ltr" className="truncate text-xs text-muted">{p.endpoint}</div>
+            <Field label={t('ai.pickModel')}>
+              <Select value={p.model ?? ''} onChange={(e) => patch(p, { model: e.target.value || null })}>
+                <option value="">—</option>
+                {p.models.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            </Field>
+            {result[p.id] && <p className="text-xs text-muted">{result[p.id]}</p>}
+            <div className="flex gap-2">
+              <Button loading={busy === p.id} onClick={() => test(p)}><FlaskConical className="h-4 w-4" />{t('ai.test')}</Button>
+              <Button variant="danger" onClick={async () => { await api(`/api/ai/providers/${p.id}`, { method: 'DELETE' }); reload(); }}><Trash2 className="h-4 w-4" />{t('common.delete')}</Button>
+            </div>
+          </GlassCard>
+        ))}
+      </div>
+      <Dialog open={open} onClose={() => setOpen(false)} title={t('ai.add')}>
+        <div className="space-y-3">
+          <Field label={t('common.name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label={t('ai.kind')}>
+            <Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as Provider['kind'], endpoint: e.target.value === 'ollama' ? 'http://127.0.0.1:11434' : 'http://127.0.0.1:8080' })}>
+              <option value="ollama">Ollama</option><option value="openai_compatible">OpenAI-compatible</option>
+            </Select>
+          </Field>
+          <Field label={t('ai.endpoint')}><Input dir="ltr" value={f.endpoint} onChange={(e) => setF({ ...f, endpoint: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t('ai.timeout')}><Input type="number" value={f.timeoutMs} onChange={(e) => setF({ ...f, timeoutMs: e.target.value })} /></Field>
+            <Field label={t('ai.retries')}><Input type="number" value={f.retries} onChange={(e) => setF({ ...f, retries: e.target.value })} /></Field>
+          </div>
+          <div className="flex justify-end gap-2"><Button onClick={() => setOpen(false)}>{t('common.cancel')}</Button><Button variant="primary" loading={busy === 'add'} disabled={f.name.trim().length < 2} onClick={add}>{t('common.save')}</Button></div>
+        </div>
+      </Dialog>
+    </div>
+  );
+}

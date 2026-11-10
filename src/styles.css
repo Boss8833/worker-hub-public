@@ -1,0 +1,318 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- WORKER HUB design tokens (permanent visual identity) ---------- */
+:root {
+  --bg: #070b1f; --surface: #0e1433; --glass: rgba(255, 255, 255, 0.06); --glass-border: rgba(255, 255, 255, 0.1);
+  --purple: #8b5cf6; --cyan: #22d3ee; --teal: #2dd4bf;
+  --success: #34d399; --warning: #fbbf24; --danger: #f87171;
+  --text: #f1f5f9; --muted: #94a3b8;
+  --radius-card: 20px; --radius-window: 28px; --blur: 20px;
+  --shadow-card: 0 10px 40px rgba(0, 0, 0, 0.35); --shadow-glow: 0 0 30px rgba(139, 92, 246, 0.35);
+  --dur-fast: 150ms; --dur: 250ms; --dur-slow: 400ms;
+}
+
+html { overflow-x: hidden; max-width: 100%; }
+html, body, #root { min-height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Tajawal', 'Inter', system-ui, sans-serif; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+html[lang='en'] body { font-family: 'Inter', 'Tajawal', system-ui, sans-serif; }
+
+.app-bg {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 600px at 8% -10%, rgba(139, 92, 246, 0.35), transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(34, 211, 238, 0.25), transparent 60%),
+    linear-gradient(160deg, #0b1030, #070b1f);
+  position: relative; overflow-x: clip; max-width: 100%;
+}
+.app-bg::before { /* subtle star dust */
+  content: ''; position: fixed; inset: 0; pointer-events: none; opacity: 0.5;
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,.6), transparent),
+    radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1.5px 1.5px at 85% 70%, rgba(34,211,238,.6), transparent),
+    radial-gradient(1px 1px at 40% 80%, rgba(167,139,250,.6), transparent),
+    radial-gradient(1px 1px at 55% 50%, rgba(255,255,255,.4), transparent);
+}
+
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-card);
+  transition: border-color var(--dur) ease, transform var(--dur) ease;
+}
+.glass-hover:hover { border-color: rgba(167, 139, 250, 0.45); transform: translateY(-2px); }
+.window { position: relative; }
+@media (min-width: 768px) {
+  .window { background: rgba(10, 14, 40, 0.55); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: var(--radius-window); box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255,255,255,.1); }
+}
+.page-enter { animation: pageIn var(--dur-slow) ease both; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Modern Holographic & Neumorphic Buttons (2026 Style)               */
+/* ------------------------------------------------------------------ */
+
+/* زر "الموافقة": تدرج أخضر/أزرق مع توهج */
+.btn-holo-approve {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.btn-holo-approve:hover {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.7), inset 0 1px 0 rgba(255,255,255,0.5);
+  transform: translateY(-1px) scale(1.02);
+}
+.btn-holo-approve::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  transition: left 0.5s;
+}
+.btn-holo-approve:hover::before { left: 100%; }
+
+/* زر "الرفض": تدرج أحمر/برتقالي مع توهج */
+.btn-holo-reject {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.btn-holo-reject:hover {
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.7), inset 0 1px 0 rgba(255,255,255,0.5);
+  transform: translateY(-1px) scale(1.02);
+}
+.btn-holo-reject::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  transition: left 0.5s;
+}
+.btn-holo-reject:hover::before { left: 100%; }
+
+/* زر "الأزرق" (للاستخدام العام) */
+.btn-holo-blue {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+.btn-holo-blue:hover {
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.7), inset 0 1px 0 rgba(255,255,255,0.5);
+  transform: translateY(-1px) scale(1.02);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Holographic Glass Buttons (High-End 2026 Style)                    */
+/* ------------------------------------------------------------------ */
+
+.btn-holo-approve, .btn-holo-reject, .btn-holo-blue {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 9999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border: 1px solid rgba(255,255,255,0.2);
+  overflow: hidden;
+  z-index: 1;
+}
+
+/* تأثير الزجاج الداخلي */
+.btn-holo-approve::before, .btn-holo-reject::before, .btn-holo-blue::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 100%);
+  border-radius: inherit;
+  z-index: -1;
+}
+
+/* زر الموافقة (أخضر نيون) */
+.btn-holo-approve {
+  background: linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%);
+  box-shadow: 
+    0 0 15px rgba(16, 185, 129, 0.4),
+    inset 0 0 10px rgba(255,255,255,0.3),
+    inset 0 -4px 8px rgba(0,0,0,0.3);
+}
+.btn-holo-approve:hover {
+  box-shadow: 
+    0 0 30px rgba(16, 185, 129, 0.8),
+    0 0 60px rgba(16, 185, 129, 0.3),
+    inset 0 0 15px rgba(255,255,255,0.5),
+    inset 0 -4px 8px rgba(0,0,0,0.3);
+  transform: translateY(-3px) scale(1.05);
+}
+
+/* زر الرفض (أحمر نيون) */
+.btn-holo-reject {
+  background: linear-gradient(135deg, #b91c1c 0%, #ef4444 50%, #f87171 100%);
+  box-shadow: 
+    0 0 15px rgba(239, 68, 68, 0.4),
+    inset 0 0 10px rgba(255,255,255,0.3),
+    inset 0 -4px 8px rgba(0,0,0,0.3);
+}
+.btn-holo-reject:hover {
+  box-shadow: 
+    0 0 30px rgba(239, 68, 68, 0.8),
+    0 0 60px rgba(239, 68, 68, 0.3),
+    inset 0 0 15px rgba(255,255,255,0.5),
+    inset 0 -4px 8px rgba(0,0,0,0.3);
+  transform: translateY(-3px) scale(1.05);
+}
+
+
+
+
+/* ================================================================== */
+/* Ultimate 2026 Neumorphic Glow Theme                                */
+/* ================================================================== */
+
+/* 1. خلفية التطبيق (Ambient Glow) */
+body {
+  background: radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.15), transparent 25%),
+              radial-gradient(circle at 85% 30%, rgba(6, 182, 212, 0.15), transparent 25%),
+              #0a0e1a !important;
+}
+
+/* 2. الزراير (Squircle + Glow بدون طلوع) */
+.btn-holo-approve, .btn-holo-reject {
+  border-radius: 16px !important; /* حواف دائرية */
+  padding: 0.65rem 1.5rem !important;
+  font-weight: 700 !important;
+  transition: box-shadow 0.3s ease, filter 0.3s ease !important;
+  transform: none !important; /* منع الزر إنه يطلع لفوق */
+}
+
+/* زر الموافقة (أزرق) */
+.btn-holo-approve {
+  background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%) !important;
+  border: 1px solid rgba(255,255,255,0.4) !important;
+  box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4), inset 0 1px 2px rgba(255,255,255,0.5) !important;
+}
+.btn-holo-approve:hover, .btn-holo-approve:active {
+  box-shadow: 0 0 25px rgba(0, 114, 255, 0.8), inset 0 1px 2px rgba(255,255,255,0.8) !important;
+  filter: brightness(1.1) !important;
+}
+
+/* زر الرفض (وردي/أحمر) */
+.btn-holo-reject {
+  background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%) !important;
+  border: 1px solid rgba(255,255,255,0.4) !important;
+  box-shadow: 0 4px 15px rgba(255, 8, 68, 0.4), inset 0 1px 2px rgba(255,255,255,0.5) !important;
+}
+.btn-holo-reject:hover, .btn-holo-reject:active {
+  box-shadow: 0 0 25px rgba(255, 8, 68, 0.8), inset 0 1px 2px rgba(255,255,255,0.8) !important;
+  filter: brightness(1.1) !important;
+}
+
+/* 3. الكروت (Neumorphic Glass) */
+.glass {
+  border-radius: 24px !important;
+  background: rgba(15, 23, 42, 0.7) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 4. الزراير العادية (زي زر المهام في الشريط السفلي) */
+button:not(.btn-holo-approve):not(.btn-holo-reject) {
+  border-radius: 12px !important;
+  transition: all 0.2s ease !important;
+}
+button:not(.btn-holo-approve):not(.btn-holo-reject):active {
+  transform: scale(0.95) !important; /* تأثير ضغطة خفيف */
+}
+
+
+/* ================================================================== */
+/* Fix Button Interactions & Shadows (No Sticky Hover)                */
+/* ================================================================== */
+
+/* 1. إصلاح الزراير الأساسية */
+.btn-base, button[type="button"], button[type="submit"], .btn-holo-approve, .btn-holo-reject {
+  transition: transform 0.1s ease, box-shadow 0.2s ease !important;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.5), 
+    0 2px 4px -1px rgba(0, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.1) !important; /* حواف مظللة داخلية */
+}
+
+/* إلغاء تأثير الطلوع (Hover) */
+.btn-holo-approve:hover, .btn-holo-reject:hover {
+  transform: none !important;
+}
+
+/* 2. تأثير الضغط (Active) - يبرز ويتوهج ويرجع طبيعي */
+.btn-holo-approve:active, .btn-holo-reject:active, .btn-base:active, button:active {
+  transform: scale(0.96) translateY(2px) !important; /* ينزل لتحت شوية */
+  box-shadow: 
+    0 0 20px rgba(0, 198, 255, 0.6), /* توهج أزرق */
+    0 0 30px rgba(255, 8, 68, 0.6),  /* توهج أحمر */
+    inset 0 4px 8px rgba(0, 0, 0, 0.6) !important; /* ظل داخلي عميق */
+}
+
+/* 3. الكروت (Glass) - إضافة حواف مظللة داخلية */
+.glass {
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.6),
+    inset 0 2px 4px rgba(255, 255, 255, 0.05),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.4) !important;
+}

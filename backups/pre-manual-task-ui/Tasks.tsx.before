@@ -1,0 +1,121 @@
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useI18n } from '../i18n';
+import { useMock } from '../lib/mock';
+import { useApi } from '../hooks/useApi';
+import { demoTasks } from '../lib/demo';
+import { money, shortDate } from '../lib/format';
+import type { TaskRow } from '../lib/types';
+import { GlassCard, PageHeader, Badge, DemoBadge, EmptyState, ErrorState, Skeleton } from '../components/ui/Glass';
+import { Button, Input, Select, DataTable } from '../components/ui/Controls';
+
+const TONE: Record<string, 'ok' | 'warn' | 'bad' | 'info' | 'muted'> = {
+  completed: 'ok', submitted: 'info', failed: 'bad', rejected: 'bad', awaiting_approval: 'warn', queued: 'info', executing: 'info',
+  validating: 'info', eligible: 'ok', ineligible: 'muted', discovered: 'muted',
+};
+const AVAILABLE = ['discovered', 'eligible', 'ineligible', 'queued', 'executing', 'validating', 'awaiting_approval'];
+
+function TaskList({ statuses }: { statuses: string[] }) {
+  const { t } = useI18n();
+  const { mock } = useMock();
+  const nav = useNavigate();
+  const real = useApi<TaskRow[]>(`/api/tasks?status=${statuses.join(',')}`);
+  const [q, setQ] = useState('');
+  const [min, setMin] = useState('');
+  const [sort, setSort] = useState('new');
+
+  const rows = useMemo(() => {
+    let r = [...(real.data ?? []), ...(mock ? demoTasks.filter((x) => statuses.includes(x.status)) : [])];
+    if (q) r = r.filter((x) => (x.title + x.platformName).toLowerCase().includes(q.toLowerCase()));
+    if (min) r = r.filter((x) => x.reward >= Number(min));
+    if (sort === 'reward') r.sort((a, b) => b.reward - a.reward);
+    if (sort === 'deadline') r.sort((a, b) => (a.deadline ?? '9').localeCompare(b.deadline ?? '9'));
+    return r;
+  }, [real.data, mock, q, min, sort, statuses]);
+
+  return (
+    <GlassCard className="p-4">
+      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+        <Input placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input type="number" min="0" placeholder={t('tasks.minReward')} value={min} onChange={(e) => setMin(e.target.value)} />
+        <Select value={sort} onChange={(e) => setSort(e.target.value)} aria-label={t('tasks.sort')}>
+          <option value="new">{t('tasks.sortNew')}</option><option value="reward">{t('tasks.sortReward')}</option><option value="deadline">{t('tasks.sortDeadline')}</option>
+        </Select>
+      </div>
+      {real.error && <ErrorState message={real.error} onRetry={real.reload} />}
+      {real.loading && !real.data && <Skeleton className="h-24" />}
+      {!real.loading && !rows.length && <EmptyState title={t('tasks.empty')} text={t('tasks.emptyText')} />}
+      {rows.length > 0 && (
+        <DataTable rows={rows} rowKey={(r) => r.id} onRowClick={(r) => nav(`/tasks/${r.id}`)} columns={[
+          { key: 't', header: t('tasks.title'), render: (r) => <span className="font-medium">{r.title} {r.demo && <DemoBadge />}</span> },
+          { key: 'p', header: t('common.platform'), render: (r) => r.platformName },
+          { key: 'r', header: t('common.reward'), render: (r) => money(r.reward, r.currency) },
+          { key: 'd', header: t('common.deadline'), render: (r) => (r.deadline ? shortDate(r.deadline) : '—') },
+          { key: 'a', header: t('tasks.ai'), render: (r) => r.aiSuitability ?? '—' },
+          { key: 's', header: t('common.status'), render: (r) => <Badge tone={TONE[r.status] ?? 'muted'}>{r.status}</Badge> },
+        ]} />
+      )}
+    </GlassCard>
+  );
+}
+
+export function TasksPage() {
+  const { t } = useI18n();
+  return <div><PageHeader title={t('tasks.title')} /><TaskList statuses={AVAILABLE} /></div>;
+}
+
+const GROUPS: Record<string, string[]> = {
+  completed: ['completed', 'submitted'], failed: ['failed'], rejected: ['rejected'], pending: ['queued', 'executing', 'validating', 'awaiting_approval'],
+};
+export function HistoryPage() {
+  const { t } = useI18n();
+  const [tab, setTab] = useState('completed');
+  return (
+    <div>
+      <PageHeader title={t('nav.history')} />
+      <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
+        {Object.keys(GROUPS).map((k) => <Button key={k} variant={tab === k ? 'primary' : 'secondary'} onClick={() => setTab(k)}>{t(`hist.${k}`)}</Button>)}
+      </div>
+      <TaskList key={tab} statuses={GROUPS[tab]} />
+    </div>
+  );
+}
+
+const STEPS = ['discovered', 'eligible', 'queued', 'executing', 'validating', 'awaiting_approval', 'submitted', 'completed'];
+
+export function TaskDetails() {
+  const { t } = useI18n();
+  const { mock } = useMock();
+  const { id } = useParams();
+  const isDemo = String(id).startsWith('demo-');
+  const real = useApi<TaskRow>(isDemo ? null : `/api/tasks/${id}`);
+  const task = isDemo ? (mock ? demoTasks.find((x) => x.id === id) : undefined) : real.data;
+  if (!isDemo && real.loading) return <Skeleton className="h-40" />;
+  if (!task) return <GlassCard><ErrorState message={real.error ?? 'Task not found'} /></GlassCard>;
+  const idx = STEPS.indexOf(task.status);
+  return (
+    <div className="space-y-4">
+      <PageHeader title={task.title} subtitle={`${task.platformName} · ${money(task.reward, task.currency)}`} actions={<>{task.demo && <DemoBadge />}<Badge tone={TONE[task.status] ?? 'muted'}>{task.status}</Badge></>} />
+      <GlassCard className="p-4">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+          {STEPS.map((s, i) => <Badge key={s} tone={i <= idx ? 'brand' : 'muted'}>{s}</Badge>)}
+        </div>
+      </GlassCard>
+      <div className="grid gap-4 md:grid-cols-2">
+        <GlassCard className="space-y-3 p-4">
+          <div><div className="text-xs text-muted">{t('task.instructions')}</div><p className="text-sm">{task.description ?? '—'}</p></div>
+          <div><div className="text-xs text-muted">{t('task.requirements')}</div><p className="text-sm">{task.requirements ?? '—'}</p></div>
+          <div><div className="text-xs text-muted">{t('common.deadline')}</div><p className="text-sm">{task.deadline ? shortDate(task.deadline) : '—'}</p></div>
+        </GlassCard>
+        <GlassCard className="space-y-2 p-4 text-sm">
+          <div><span className="text-muted">{t('task.validation')}: </span>—</div>
+          <div><span className="text-muted">{t('task.submissions')}: </span>—</div>
+          <div className="flex flex-wrap gap-2 pt-2">
+            {['execute', 'approve', 'submit'].map((a) => <Button key={a} disabled title={t('task.phase')}>{t(`task.${a}`)}</Button>)}
+          </div>
+          <p className="text-xs text-muted">{t('task.phase')}</p>
+        </GlassCard>
+      </div>
+    </div>
+  );
+}
